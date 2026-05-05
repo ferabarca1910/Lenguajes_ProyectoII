@@ -8,6 +8,18 @@ import System.Directory (doesFileExist)
 saveRecords :: [FinancialRecord] -> IO ()
 saveRecords records = writeFile "records.txt" (show records)
 
+saveBudgets :: [Budget] -> IO ()
+saveBudgets bs = writeFile "budgets.txt" (show bs)
+
+loadBudgets :: IO [Budget]
+loadBudgets = do
+  exists <- doesFileExist "budgets.txt"
+  if not exists
+    then return []
+    else do
+      content <- readFile "budgets.txt"
+      return (read content)
+
 -- Carga los registros desde el archivo
 -- Si el archivo no existe, retorna lista vacía para evitar errores
 loadRecords :: IO [FinancialRecord]

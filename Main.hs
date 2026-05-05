@@ -70,15 +70,19 @@ printfFecha y mo d =
 parseTags :: String -> [String]
 parseTags = filter (not . null) . map trim . splitBy ','
 
-leerMontoValido :: IO Double
-leerMontoValido = do
-  putStrLn "Monto (número positivo, ej: 1500 o 99.5):"
+leerMontoPositivo :: String -> IO Double
+leerMontoPositivo promptLine = do
+  putStrLn promptLine
   line <- getLine
   case parseMonto line of
     Just x -> return x
     Nothing -> do
       putStrLn "Monto inválido: debe ser un número mayor que cero."
-      leerMontoValido
+      leerMontoPositivo promptLine
+
+leerMontoValido :: IO Double
+leerMontoValido =
+  leerMontoPositivo "Monto (número positivo, ej: 1500 o 99.5):"
 
 leerCategoria :: IO String
 leerCategoria = do
@@ -110,11 +114,12 @@ leerTags = do
 main :: IO ()
 main = do
     registros <- loadRecords
-    menu registros
+    presupuestos <- loadBudgets
+    menu registros presupuestos
 
 -- Menú principal del sistema
-menu :: [FinancialRecord] -> IO ()
-menu registros = do
+menu :: [FinancialRecord] -> [Budget] -> IO ()
+menu registros presupuestos = do
     putStrLn "\n--- Sistema de Finanzas ---"
     putStrLn "1. Agregar ingreso"
     putStrLn "2. Agregar gasto"
@@ -122,26 +127,35 @@ menu registros = do
     putStrLn "4. Agregar inversión"
     putStrLn "5. Ver registros"
     putStrLn "6. Ver balance"
-    putStrLn "7. Guardar y salir"
+    putStrLn "7. Definir o actualizar presupuesto por categoría"
+    putStrLn "8. Comparar presupuesto vs gastos reales (alertas)"
+    putStrLn "9. Guardar y salir"
     opcion <- getLine
 
     case opcion of
-        "1" -> agregarRegistro Income registros >>= menu
-        "2" -> agregarRegistro Expense registros >>= menu
-        "3" -> agregarRegistro Saving registros >>= menu
-        "4" -> agregarRegistro Investment registros >>= menu
+        "1" -> agregarRegistro Income registros >>= \rs -> menu rs presupuestos
+        "2" -> agregarRegistro Expense registros >>= \rs -> menu rs presupuestos
+        "3" -> agregarRegistro Saving registros >>= \rs -> menu rs presupuestos
+        "4" -> agregarRegistro Investment registros >>= \rs -> menu rs presupuestos
         "5" -> do
             mostrarRegistros registros
-            menu registros
+            menu registros presupuestos
         "6" -> do
             putStrLn ("Balance: " ++ show (calcularBalance registros))
-            menu registros
+            menu registros presupuestos
         "7" -> do
+            ps <- agregarPresupuesto presupuestos
+            menu registros ps
+        "8" -> do
+            compararPresupuestosVsGastos presupuestos registros
+            menu registros presupuestos
+        "9" -> do
             saveRecords registros
-            putStrLn "Datos guardados. Chao mae"
-        _   -> do
+            saveBudgets presupuestos
+            putStrLn "Datos guardados (registros y presupuestos). Chao mae"
+        _ -> do
             putStrLn "Opción inválida"
-            menu registros
+            menu registros presupuestos
 
 -- Crea un nuevo registro financiero (monto, categoría, fecha y tags validados)
 agregarRegistro :: RecordType -> [FinancialRecord] -> IO [FinancialRecord]
@@ -156,6 +170,45 @@ agregarRegistro tipo registros = do
     let nuevo = FinancialRecord tipo monto cat fecha (trim desc) tgs
 
     return (registros ++ [nuevo])
+
+-- Define o actualiza el tope de gasto para una categoría (solo compara contra registros tipo Gasto)
+agregarPresupuesto :: [Budget] -> IO [Budget]
+agregarPresupuesto bs = do
+    putStrLn "Categoría a presupuestar (debe ser la misma que usás en gastos, sin importar mayúsculas):"
+    cat <- leerCategoria
+    lim <-
+        leerMontoPositivo
+            "Tope máximo de gasto para esa categoría (número positivo, ej: 50000):"
+    let b = Budget cat lim
+    putStrLn ("Listo. Presupuesto para \"" ++ cat ++ "\": " ++ show lim)
+    return (upsertBudget b bs)
+
+-- Tabla real vs presupuesto y líneas ALERTA si hay exceso
+compararPresupuestosVsGastos :: [Budget] -> [FinancialRecord] -> IO ()
+compararPresupuestosVsGastos [] _ =
+    putStrLn "No hay presupuestos definidos. Use la opción 7 primero."
+compararPresupuestosVsGastos bs regs = do
+    putStrLn "\n--- Presupuesto vs gastos reales (solo Expense) ---"
+    mapM_ (fila regs) bs
+    let als = alertasPresupuesto bs regs
+    if null als
+        then putStrLn "\nSin alertas: ningún presupuesto superado."
+        else do
+            putStrLn "\n--- Alertas ---"
+            mapM_ putStrLn als
+  where
+    fila rs b = do
+        let real = gastoRealEnCategoria (budgetCategory b) rs
+            tope = budgetLimit b
+            restante = tope - real
+        putStrLn "------------------------"
+        putStrLn ("Categoría: " ++ budgetCategory b)
+        putStrLn ("Presupuesto (tope): " ++ show tope)
+        putStrLn ("Gasto real acumulado: " ++ show real)
+        putStrLn ("Diferencia (tope - gasto): " ++ show restante)
+        if real > tope
+            then putStrLn "Estado: EXCEDIDO"
+            else putStrLn "Estado: dentro del presupuesto"
 
 -- Muestra todos los registros de forma más legible
 mostrarRegistros :: [FinancialRecord] -> IO ()
