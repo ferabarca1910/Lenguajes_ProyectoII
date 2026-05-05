@@ -26,6 +26,13 @@ parseMonto s =
     [(x, rest)] | all isSpace rest, x > 0 -> Just x
     _ -> Nothing
 
+-- Umbral >= 0 (para mínimos de ahorro u otros límites no estrictamente positivos)
+parseMontoNoNeg :: String -> Maybe Double
+parseMontoNoNeg s =
+  case reads (trim s) of
+    [(x, rest)] | all isSpace rest, x >= 0 -> Just x
+    _ -> Nothing
+
 diasEnMes :: Int -> Int -> Int
 diasEnMes y m = case m of
   1 -> 31
@@ -84,6 +91,16 @@ leerMontoValido :: IO Double
 leerMontoValido =
   leerMontoPositivo "Monto (número positivo, ej: 1500 o 99.5):"
 
+leerMontoNoNegativo :: String -> IO Double
+leerMontoNoNegativo promptLine = do
+  putStrLn promptLine
+  line <- getLine
+  case parseMontoNoNeg line of
+    Just x -> return x
+    Nothing -> do
+      putStrLn "Valor inválido: debe ser un número mayor o igual a cero."
+      leerMontoNoNegativo promptLine
+
 leerCategoria :: IO String
 leerCategoria = do
   putStrLn "Categoría (texto no vacío):"
@@ -115,11 +132,12 @@ main :: IO ()
 main = do
     registros <- loadRecords
     presupuestos <- loadBudgets
-    menu registros presupuestos
+    reglas <- loadRules
+    menu registros presupuestos reglas
 
 -- Menú principal del sistema
-menu :: [FinancialRecord] -> [Budget] -> IO ()
-menu registros presupuestos = do
+menu :: [FinancialRecord] -> [Budget] -> [Rule] -> IO ()
+menu registros presupuestos reglas = do
     putStrLn "\n--- Sistema de Finanzas ---"
     putStrLn "1. Agregar ingreso"
     putStrLn "2. Agregar gasto"
@@ -129,33 +147,42 @@ menu registros presupuestos = do
     putStrLn "6. Ver balance"
     putStrLn "7. Definir o actualizar presupuesto por categoría"
     putStrLn "8. Comparar presupuesto vs gastos reales (alertas)"
-    putStrLn "9. Guardar y salir"
+    putStrLn "9. Agregar regla del sistema"
+    putStrLn "10. Evaluar reglas (alertas y advertencias)"
+    putStrLn "11. Guardar y salir"
     opcion <- getLine
 
     case opcion of
-        "1" -> agregarRegistro Income registros >>= \rs -> menu rs presupuestos
-        "2" -> agregarRegistro Expense registros >>= \rs -> menu rs presupuestos
-        "3" -> agregarRegistro Saving registros >>= \rs -> menu rs presupuestos
-        "4" -> agregarRegistro Investment registros >>= \rs -> menu rs presupuestos
+        "1" -> agregarRegistro Income registros >>= \rs -> menu rs presupuestos reglas
+        "2" -> agregarRegistro Expense registros >>= \rs -> menu rs presupuestos reglas
+        "3" -> agregarRegistro Saving registros >>= \rs -> menu rs presupuestos reglas
+        "4" -> agregarRegistro Investment registros >>= \rs -> menu rs presupuestos reglas
         "5" -> do
             mostrarRegistros registros
-            menu registros presupuestos
+            menu registros presupuestos reglas
         "6" -> do
             putStrLn ("Balance: " ++ show (calcularBalance registros))
-            menu registros presupuestos
+            menu registros presupuestos reglas
         "7" -> do
             ps <- agregarPresupuesto presupuestos
-            menu registros ps
+            menu registros ps reglas
         "8" -> do
             compararPresupuestosVsGastos presupuestos registros
-            menu registros presupuestos
+            menu registros presupuestos reglas
         "9" -> do
+            rs <- agregarRegla reglas
+            menu registros presupuestos rs
+        "10" -> do
+            evaluarReglasEnPantalla reglas registros
+            menu registros presupuestos reglas
+        "11" -> do
             saveRecords registros
             saveBudgets presupuestos
-            putStrLn "Datos guardados (registros y presupuestos). Chao mae"
+            saveRules reglas
+            putStrLn "Datos guardados (registros, presupuestos y reglas). Chao mae"
         _ -> do
             putStrLn "Opción inválida"
-            menu registros presupuestos
+            menu registros presupuestos reglas
 
 -- Crea un nuevo registro financiero (monto, categoría, fecha y tags validados)
 agregarRegistro :: RecordType -> [FinancialRecord] -> IO [FinancialRecord]
@@ -209,6 +236,49 @@ compararPresupuestosVsGastos bs regs = do
         if real > tope
             then putStrLn "Estado: EXCEDIDO"
             else putStrLn "Estado: dentro del presupuesto"
+
+-- Alta de reglas configurables (se acumulan en memoria hasta guardar con 11)
+agregarRegla :: [Rule] -> IO [Rule]
+agregarRegla rs = do
+    putStrLn "\n--- Agregar regla ---"
+    putStrLn "1. Si gasto en categoría supera un monto → alerta"
+    putStrLn "2. Si ahorro total (suma de Saving) es menor a un mínimo → advertencia"
+    putStrLn "0. Volver sin cambios"
+    sub <- getLine
+    case trim sub of
+        "0" -> return rs
+        "1" -> do
+            putStrLn "Categoría a vigilar (igual que en gastos; sin importar mayúsculas al evaluar):"
+            cat <- leerCategoria
+            lim <-
+                leerMontoPositivo
+                    "Umbral: se dispara la alerta si la suma de gastos en esa categoría es mayor a:"
+            putStrLn "Regla agregada (recuerde guardar con la opción 11)."
+            return (rs ++ [RuleGastoEnCategoriaMayor cat lim])
+        "2" -> do
+            minimo <-
+                leerMontoNoNegativo
+                    "Mínimo de ahorro total deseado (>= 0). Advertencia si la suma de registros Saving queda por debajo:"
+            putStrLn "Regla agregada (recuerde guardar con la opción 11)."
+            return (rs ++ [RuleAhorroTotalMenor minimo])
+        _ -> do
+            putStrLn "Opción inválida."
+            agregarRegla rs
+
+evaluarReglasEnPantalla :: [Rule] -> [FinancialRecord] -> IO ()
+evaluarReglasEnPantalla [] _ =
+    putStrLn "No hay reglas definidas. Use la opción 9."
+evaluarReglasEnPantalla rs regs = do
+    putStrLn "\n--- Reglas definidas ---"
+    mapM_
+        ( \(i, r) ->
+            putStrLn (show (i :: Int) ++ ". " ++ describirRegla r)
+        )
+        (zip [1 ..] rs)
+    putStrLn "\n--- Resultado de la evaluación ---"
+    case evaluarReglas rs regs of
+        [] -> putStrLn "Ninguna regla disparada (todo OK según los datos actuales)."
+        msgs -> mapM_ putStrLn msgs
 
 -- Muestra todos los registros de forma más legible
 mostrarRegistros :: [FinancialRecord] -> IO ()

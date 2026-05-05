@@ -17,3 +17,11 @@ data Budget = Budget
   { budgetCategory :: String
   , budgetLimit    :: Double
   } deriving (Show, Read, Eq)
+
+-- Reglas configurables evaluadas sobre los registros cargados en memoria
+data Rule
+  = -- Suma de gastos (Expense) en la categoría (normalizada) supera el umbral
+    RuleGastoEnCategoriaMayor String Double
+  | -- Suma de montos de ahorro (Saving) por debajo del mínimo deseado
+    RuleAhorroTotalMenor Double
+  deriving (Show, Read, Eq)

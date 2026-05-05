@@ -31,3 +31,15 @@ loadRecords = do
     else do
       content <- readFile "records.txt"
       return (read content)
+
+saveRules :: [Rule] -> IO ()
+saveRules rs = writeFile "rules.txt" (show rs)
+
+loadRules :: IO [Rule]
+loadRules = do
+  exists <- doesFileExist "rules.txt"
+  if not exists
+    then return []
+    else do
+      content <- readFile "rules.txt"
+      return (read content)

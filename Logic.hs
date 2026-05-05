@@ -60,3 +60,48 @@ upsertBudget b (x : xs)
   | categoriaNorm (budgetCategory b) == categoriaNorm (budgetCategory x) =
       b : xs
   | otherwise = x : upsertBudget b xs
+
+-- Suma de montos registrados como ahorro (Saving)
+totalAhorroRegistrado :: [FinancialRecord] -> Double
+totalAhorroRegistrado regs =
+  sum [amount r | r <- regs, recordType r == Saving]
+
+evaluarRegla :: Rule -> [FinancialRecord] -> Maybe String
+evaluarRegla (RuleGastoEnCategoriaMayor cat lim) regs =
+  let g = gastoRealEnCategoria cat regs
+   in if g > lim
+        then
+          Just
+            ( "[ALERTA] Gastos en categoría \""
+                ++ cat
+                ++ "\" suman "
+                ++ show g
+                ++ " (supera el umbral "
+                ++ show lim
+                ++ ")"
+            )
+        else Nothing
+evaluarRegla (RuleAhorroTotalMenor minimo) regs =
+  let a = totalAhorroRegistrado regs
+   in if a < minimo
+        then
+          Just
+            ( "[ADVERTENCIA] Ahorro total registrado "
+                ++ show a
+                ++ " es menor al mínimo "
+                ++ show minimo
+            )
+        else Nothing
+
+evaluarReglas :: [Rule] -> [FinancialRecord] -> [String]
+evaluarReglas rs regs = concatMap f rs
+  where
+    f r = case evaluarRegla r regs of
+      Nothing -> []
+      Just m -> [m]
+
+describirRegla :: Rule -> String
+describirRegla (RuleGastoEnCategoriaMayor c x) =
+  "Alerta si gastos (Expense) en categoría \"" ++ c ++ "\" superan " ++ show x
+describirRegla (RuleAhorroTotalMenor m) =
+  "Advertencia si la suma de ahorros (Saving) es menor a " ++ show m
