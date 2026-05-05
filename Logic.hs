@@ -2,8 +2,12 @@ module Logic where
 
 import Types
 
--- Calcula el balance total del sistema
--- Income suma, Expense resta, los demás se ignoran por ahora
+-- Balance simple: ingresos, ahorros e inversiones suman; gastos restan
 calcularBalance :: [FinancialRecord] -> Double
-calcularBalance records =
-    sum [ if recordType r == Income then amount r else - amount r | r <- records ]
+calcularBalance = sum . map contribucion
+  where
+    contribucion r = case recordType r of
+        Income     -> amount r
+        Expense    -> -amount r
+        Saving     -> amount r
+        Investment -> amount r
