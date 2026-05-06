@@ -77,6 +77,25 @@ printfFecha y mo d =
 parseTags :: String -> [String]
 parseTags = filter (not . null) . map trim . splitBy ','
 
+esMesValido :: String -> Bool
+esMesValido s =
+  length s == 7
+    && s !! 4 == '-'
+    && all (`elem` ['0' .. '9']) [s !! 0, s !! 1, s !! 2, s !! 3, s !! 5, s !! 6]
+    && let mo = read [s !! 5, s !! 6] :: Int
+        in mo >= 1 && mo <= 12
+
+leerMesValido :: String -> IO String
+leerMesValido promptLine = do
+  putStrLn promptLine
+  line <- getLine
+  let m = trim line
+  if esMesValido m
+    then return m
+    else do
+      putStrLn "Mes inválido. Use formato YYYY-MM (ej: 2026-05)."
+      leerMesValido promptLine
+
 leerMontoPositivo :: String -> IO Double
 leerMontoPositivo promptLine = do
   putStrLn promptLine
@@ -151,7 +170,8 @@ menu registros presupuestos reglas = do
     putStrLn "10. Evaluar reglas (alertas y advertencias)"
     putStrLn "11. Análisis financiero avanzado (2.3)"
     putStrLn "12. Simulación financiera (2.4)"
-    putStrLn "13. Guardar y salir"
+    putStrLn "13. Reportes (2.7)"
+    putStrLn "14. Guardar y salir"
     opcion <- getLine
 
     case opcion of
@@ -184,6 +204,9 @@ menu registros presupuestos reglas = do
             mostrarSimulacionFinanciera registros
             menu registros presupuestos reglas
         "13" -> do
+            mostrarReportes registros
+            menu registros presupuestos reglas
+        "14" -> do
             saveRecords registros
             saveBudgets presupuestos
             saveRules reglas
@@ -400,3 +423,59 @@ mostrarSimulacionFinanciera regs = do
         _ -> do
             putStrLn "Opción inválida."
             mostrarSimulacionFinanciera regs
+
+mostrarReportes :: [FinancialRecord] -> IO ()
+mostrarReportes regs = do
+    putStrLn "\n=== Reportes (2.7) ==="
+    putStrLn "1. Resumen mensual"
+    putStrLn "2. Comparación entre periodos (mes vs mes)"
+    putStrLn "3. Categorías con mayor gasto"
+    putStrLn "0. Volver"
+    sub <- getLine
+    case trim sub of
+        "0" -> return ()
+        "1" -> do
+            putStrLn "\n--- Resumen mensual ---"
+            let flujo = resumenMensual regs
+            if null flujo
+                then putStrLn "No hay datos para generar el resumen mensual."
+                else
+                    mapM_
+                        ( \(m, ing, gas, neto) ->
+                            putStrLn
+                                ( m
+                                    ++ " | ingresos: "
+                                    ++ show ing
+                                    ++ " | gastos: "
+                                    ++ show gas
+                                    ++ " | neto: "
+                                    ++ show neto
+                                )
+                        )
+                        flujo
+        "2" -> do
+            putStrLn "\n--- Comparación entre periodos ---"
+            m1 <- leerMesValido "Primer periodo (YYYY-MM):"
+            m2 <- leerMesValido "Segundo periodo (YYYY-MM):"
+            case compararPeriodos m1 m2 regs of
+                Nothing ->
+                    putStrLn
+                        "No se pudo comparar: revise que ambos meses existan en los registros."
+                Just (ing1, ing2, vIng, gas1, gas2, vGas, neto1, neto2, vNeto) -> do
+                    putStrLn ("Ingresos: " ++ m1 ++ "=" ++ show ing1 ++ " | " ++ m2 ++ "=" ++ show ing2 ++ " | variación=" ++ show vIng)
+                    putStrLn ("Gastos:   " ++ m1 ++ "=" ++ show gas1 ++ " | " ++ m2 ++ "=" ++ show gas2 ++ " | variación=" ++ show vGas)
+                    putStrLn ("Neto:     " ++ m1 ++ "=" ++ show neto1 ++ " | " ++ m2 ++ "=" ++ show neto2 ++ " | variación=" ++ show vNeto)
+        "3" -> do
+            putStrLn "\n--- Categorías con mayor gasto ---"
+            let tops = topCategoriasGasto 5 regs
+            if null tops
+                then putStrLn "No hay gastos registrados por categoría."
+                else
+                    mapM_
+                        ( \(c, v) ->
+                            putStrLn ("Categoría: " ++ c ++ " | gasto acumulado: " ++ show v)
+                        )
+                        tops
+        _ -> do
+            putStrLn "Opción inválida."
+            mostrarReportes regs

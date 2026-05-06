@@ -220,3 +220,25 @@ proyeccionAhorroEnMeses meses regs
         Nothing -> Nothing
         Just prom ->
           Just [(m, prom * fromIntegral m) | m <- [1 .. meses]]
+
+-- Busca el resumen de un mes específico (YYYY-MM) dentro del flujo mensual.
+resumenDeMes :: String -> [FinancialRecord] -> Maybe (Double, Double, Double)
+resumenDeMes mes regs =
+  case [ (ing, gas, neto) | (m, ing, gas, neto) <- resumenMensual regs, m == mes ] of
+    [] -> Nothing
+    (x : _) -> Just x
+
+-- Compara dos periodos (mes vs mes) y devuelve variaciones.
+-- (ingMes1, ingMes2, varIng, gasMes1, gasMes2, varGas, netoMes1, netoMes2, varNeto)
+compararPeriodos ::
+  String ->
+  String ->
+  [FinancialRecord] ->
+  Maybe (Double, Double, Double, Double, Double, Double, Double, Double, Double)
+compararPeriodos mes1 mes2 regs = do
+  (ing1, gas1, neto1) <- resumenDeMes mes1 regs
+  (ing2, gas2, neto2) <- resumenDeMes mes2 regs
+  let varIng = ing2 - ing1
+      varGas = gas2 - gas1
+      varNeto = neto2 - neto1
+  Just (ing1, ing2, varIng, gas1, gas2, varGas, neto1, neto2, varNeto)
