@@ -149,7 +149,8 @@ menu registros presupuestos reglas = do
     putStrLn "8. Comparar presupuesto vs gastos reales (alertas)"
     putStrLn "9. Agregar regla del sistema"
     putStrLn "10. Evaluar reglas (alertas y advertencias)"
-    putStrLn "11. Guardar y salir"
+    putStrLn "11. Análisis financiero avanzado (2.3)"
+    putStrLn "12. Guardar y salir"
     opcion <- getLine
 
     case opcion of
@@ -176,6 +177,9 @@ menu registros presupuestos reglas = do
             evaluarReglasEnPantalla reglas registros
             menu registros presupuestos reglas
         "11" -> do
+            mostrarAnalisisAvanzado registros
+            menu registros presupuestos reglas
+        "12" -> do
             saveRecords registros
             saveBudgets presupuestos
             saveRules reglas
@@ -295,3 +299,60 @@ mostrarUno r = do
     putStrLn ("Fecha: " ++ date r)
     putStrLn ("Descripción: " ++ description r)
     putStrLn ("Tags: " ++ show (tags r))
+
+mostrarAnalisisAvanzado :: [FinancialRecord] -> IO ()
+mostrarAnalisisAvanzado regs = do
+    putStrLn "\n=== Análisis financiero avanzado (2.3) ==="
+    putStrLn "\n--- Flujo de caja mensual ---"
+    let flujo = resumenMensual regs
+    if null flujo
+        then putStrLn "No hay datos suficientes para flujo mensual."
+        else
+            mapM_
+                ( \(m, ing, gas, neto) ->
+                    putStrLn
+                        ( m
+                            ++ " | ingresos: "
+                            ++ show ing
+                            ++ " | gastos: "
+                            ++ show gas
+                            ++ " | neto: "
+                            ++ show neto
+                        )
+                )
+                flujo
+
+    putStrLn "\n--- Tendencia de gasto mensual ---"
+    let tend = tendenciaGastoMensual regs
+    if null tend
+        then putStrLn "No hay suficientes meses con gasto para calcular tendencia."
+        else
+            mapM_
+                ( \(m, act, prev, var) ->
+                    putStrLn
+                        ( m
+                            ++ " | gasto anterior: "
+                            ++ show prev
+                            ++ " | gasto actual: "
+                            ++ show act
+                            ++ " | variación: "
+                            ++ show var
+                        )
+                )
+                tend
+
+    putStrLn "\n--- Proyección de gasto próximo mes ---"
+    case proyeccionGastoSiguienteMes regs of
+        Nothing -> putStrLn "No hay histórico de gastos para proyectar."
+        Just p -> putStrLn ("Proyección estimada (promedio histórico): " ++ show p)
+
+    putStrLn "\n--- Top 5 categorías con mayor gasto ---"
+    let top5 = topCategoriasGasto 5 regs
+    if null top5
+        then putStrLn "No hay gastos registrados por categoría."
+        else
+            mapM_
+                ( \(c, v) ->
+                    putStrLn ("Categoría: " ++ c ++ " | gasto acumulado: " ++ show v)
+                )
+                top5
