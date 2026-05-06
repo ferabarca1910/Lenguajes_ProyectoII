@@ -150,7 +150,8 @@ menu registros presupuestos reglas = do
     putStrLn "9. Agregar regla del sistema"
     putStrLn "10. Evaluar reglas (alertas y advertencias)"
     putStrLn "11. Análisis financiero avanzado (2.3)"
-    putStrLn "12. Guardar y salir"
+    putStrLn "12. Simulación financiera (2.4)"
+    putStrLn "13. Guardar y salir"
     opcion <- getLine
 
     case opcion of
@@ -180,6 +181,9 @@ menu registros presupuestos reglas = do
             mostrarAnalisisAvanzado registros
             menu registros presupuestos reglas
         "12" -> do
+            mostrarSimulacionFinanciera registros
+            menu registros presupuestos reglas
+        "13" -> do
             saveRecords registros
             saveBudgets presupuestos
             saveRules reglas
@@ -356,3 +360,43 @@ mostrarAnalisisAvanzado regs = do
                     putStrLn ("Categoría: " ++ c ++ " | gasto acumulado: " ++ show v)
                 )
                 top5
+
+mostrarSimulacionFinanciera :: [FinancialRecord] -> IO ()
+mostrarSimulacionFinanciera regs = do
+    putStrLn "\n=== Simulación financiera (2.4) ==="
+    putStrLn "1. Simular reducción de gastos (%)"
+    putStrLn "2. Proyección de ahorro en el tiempo (meses)"
+    putStrLn "0. Volver"
+    sub <- getLine
+    case trim sub of
+        "0" -> return ()
+        "1" -> do
+            porcentaje <-
+                leerMontoNoNegativo
+                    "Porcentaje de reducción de gastos (0 a 100, ej: 10):"
+            let (gActual, gReducido, ahorro, bActual, bSimulado) =
+                    simularReduccionGastos porcentaje regs
+            putStrLn "\n--- Resultado de simulación ---"
+            putStrLn ("Gasto actual total: " ++ show gActual)
+            putStrLn ("Gasto total simulado: " ++ show gReducido)
+            putStrLn ("Ahorro estimado por reducción: " ++ show ahorro)
+            putStrLn ("Balance actual: " ++ show bActual)
+            putStrLn ("Balance simulado: " ++ show bSimulado)
+        "2" -> do
+            mesesD <-
+                leerMontoPositivo
+                    "Cantidad de meses a proyectar (número entero positivo, ej: 6):"
+            let meses = floor mesesD
+            putStrLn ("\nSe proyectará para " ++ show meses ++ " meses.")
+            case proyeccionAhorroEnMeses meses regs of
+                Nothing -> putStrLn "No hay datos suficientes para proyectar ahorro."
+                Just filas -> do
+                    putStrLn "\n--- Proyección de ahorro acumulado ---"
+                    mapM_
+                        ( \(m, a) ->
+                            putStrLn ("Mes " ++ show m ++ ": ahorro acumulado estimado = " ++ show a)
+                        )
+                        filas
+        _ -> do
+            putStrLn "Opción inválida."
+            mostrarSimulacionFinanciera regs

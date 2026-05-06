@@ -1,18 +1,19 @@
 module Logic where
 
 import Data.Char (isSpace, toLower)
-import Data.List (dropWhileEnd, foldl', sortBy)
+import Data.List (dropWhileEnd, nub, sort)
 
 import Types
 
+-- Quita espacios al inicio y al final de una categoría.
 trimCat :: String -> String
 trimCat = dropWhile isSpace . dropWhileEnd isSpace
 
--- Comparación insensible a mayúsculas para emparejar categoría de gasto con presupuesto
+-- Normaliza categoría para comparar sin diferencias de mayúsculas/minúsculas.
 categoriaNorm :: String -> String
 categoriaNorm = map toLower . trimCat
 
--- Suma solo gastos (Expense) cuya categoría coincide con la del presupuesto (normalizada)
+-- Suma los gastos (Expense) de una categoría dada.
 gastoRealEnCategoria :: String -> [FinancialRecord] -> Double
 gastoRealEnCategoria catPresupuesto regs =
   sum
@@ -24,10 +25,11 @@ gastoRealEnCategoria catPresupuesto regs =
   where
     ref = categoriaNorm catPresupuesto
 
--- True si el gasto acumulado en esa categoría supera el tope
+-- Indica si una categoría se pasó de su presupuesto.
 excedePresupuesto :: Budget -> [FinancialRecord] -> Bool
 excedePresupuesto b regs = gastoRealEnCategoria (budgetCategory b) regs > budgetLimit b
 
+-- Genera mensajes de alerta para los presupuestos excedidos.
 alertasPresupuesto :: [Budget] -> [FinancialRecord] -> [String]
 alertasPresupuesto bs regs =
   [ msg b
@@ -43,7 +45,7 @@ alertasPresupuesto bs regs =
         ++ " > presupuesto "
         ++ show (budgetLimit b)
 
--- Balance simple: ingresos, ahorros e inversiones suman; gastos restan
+-- Balance general: ingreso/ahorro/inversión suman y gasto resta.
 calcularBalance :: [FinancialRecord] -> Double
 calcularBalance = sum . map contribucion
   where
@@ -53,7 +55,7 @@ calcularBalance = sum . map contribucion
         Saving     -> amount r
         Investment -> amount r
 
--- Si ya hay presupuesto para la misma categoría (normalizada), lo reemplaza
+-- Inserta o reemplaza presupuesto de una categoría.
 upsertBudget :: Budget -> [Budget] -> [Budget]
 upsertBudget b [] = [b]
 upsertBudget b (x : xs)
@@ -61,11 +63,12 @@ upsertBudget b (x : xs)
       b : xs
   | otherwise = x : upsertBudget b xs
 
--- Suma de montos registrados como ahorro (Saving)
+-- Suma todo lo registrado como ahorro (Saving).
 totalAhorroRegistrado :: [FinancialRecord] -> Double
 totalAhorroRegistrado regs =
   sum [amount r | r <- regs, recordType r == Saving]
 
+-- Evalúa una regla individual y retorna mensaje si se activa.
 evaluarRegla :: Rule -> [FinancialRecord] -> Maybe String
 evaluarRegla (RuleGastoEnCategoriaMayor cat lim) regs =
   let g = gastoRealEnCategoria cat regs
@@ -93,6 +96,7 @@ evaluarRegla (RuleAhorroTotalMenor minimo) regs =
             )
         else Nothing
 
+-- Evalúa todas las reglas y junta solo los mensajes disparados.
 evaluarReglas :: [Rule] -> [FinancialRecord] -> [String]
 evaluarReglas rs regs = concatMap f rs
   where
@@ -100,26 +104,24 @@ evaluarReglas rs regs = concatMap f rs
       Nothing -> []
       Just m -> [m]
 
+-- Convierte una regla a texto legible para mostrar en pantalla.
 describirRegla :: Rule -> String
 describirRegla (RuleGastoEnCategoriaMayor c x) =
   "Alerta si gastos (Expense) en categoría \"" ++ c ++ "\" superan " ++ show x
 describirRegla (RuleAhorroTotalMenor m) =
   "Advertencia si la suma de ahorros (Saving) es menor a " ++ show m
 
+-- Extrae el mes en formato YYYY-MM desde YYYY-MM-DD.
 mesDeFecha :: String -> String
 mesDeFecha f
   | length f >= 7 = take 7 f
   | otherwise = f
 
-acumularPorClave :: String -> Double -> [(String, Double)] -> [(String, Double)]
-acumularPorClave k v [] = [(k, v)]
-acumularPorClave k v ((k0, v0) : xs)
-  | k == k0 = (k0, v0 + v) : xs
-  | otherwise = (k0, v0) : acumularPorClave k v xs
+-- Lista de meses únicos y ordenados presentes en los registros.
+mesesUnicosOrdenados :: [FinancialRecord] -> [String]
+mesesUnicosOrdenados regs = sort (nub [mesDeFecha (date r) | r <- regs])
 
-ordenarPorMesAsc :: [(String, Double)] -> [(String, Double)]
-ordenarPorMesAsc = sortBy (\(m1, _) (m2, _) -> compare m1 m2)
-
+-- Flujo por mes: ingresos, gastos y neto.
 resumenMensual :: [FinancialRecord] -> [(String, Double, Double, Double)]
 resumenMensual regs =
   [ (mes, ingresos, gastos, ingresos - gastos)
@@ -128,20 +130,20 @@ resumenMensual regs =
   , let gastos = sumaExpense mes
   ]
   where
-    meses = uniqueSortedMonths regs
+    meses = mesesUnicosOrdenados regs
     sumaIncome m =
       sum [amount r | r <- regs, mesDeFecha (date r) == m, recordType r == Income]
     sumaExpense m =
       sum [amount r | r <- regs, mesDeFecha (date r) == m, recordType r == Expense]
 
+-- Gasto total por mes (solo registros Expense).
 gastosPorMes :: [FinancialRecord] -> [(String, Double)]
 gastosPorMes regs =
-  ordenarPorMesAsc $
-    foldl'
-      (\acc r -> if recordType r == Expense then acumularPorClave (mesDeFecha (date r)) (amount r) acc else acc)
-      []
-      regs
+  [ (m, sum [amount r | r <- regs, recordType r == Expense, mesDeFecha (date r) == m])
+  | m <- mesesUnicosOrdenados regs
+  ]
 
+-- Compara gasto de cada mes contra el mes anterior.
 tendenciaGastoMensual :: [FinancialRecord] -> [(String, Double, Double, Double)]
 tendenciaGastoMensual regs =
   [ (mesActual, gastoActual, gastoPrevio, gastoActual - gastoPrevio)
@@ -150,31 +152,71 @@ tendenciaGastoMensual regs =
   where
     gs = gastosPorMes regs
 
+-- Proyección simple: promedio de gastos mensuales históricos.
 proyeccionGastoSiguienteMes :: [FinancialRecord] -> Maybe Double
 proyeccionGastoSiguienteMes regs =
   case map snd (gastosPorMes regs) of
     [] -> Nothing
     xs -> Just (sum xs / fromIntegral (length xs))
 
+-- Suma gasto por categoría para identificar impacto.
 gastoPorCategoria :: [FinancialRecord] -> [(String, Double)]
 gastoPorCategoria regs =
-  foldl'
-    (\acc r -> if recordType r == Expense then acumularPorClave (category r) (amount r) acc else acc)
-    []
-    regs
+  [ (c, sum [amount r | r <- regs, recordType r == Expense, category r == c])
+  | c <- categoriasUnicasGasto regs
+  ]
 
+-- Top N categorías con mayor gasto acumulado.
 topCategoriasGasto :: Int -> [FinancialRecord] -> [(String, Double)]
 topCategoriasGasto n regs =
   take n $
-    sortBy
-      (\(c1, v1) (c2, v2) -> compare v2 v1 <> compare c1 c2)
+    sortByGastoDesc
       (gastoPorCategoria regs)
 
-uniqueSortedMonths :: [FinancialRecord] -> [String]
-uniqueSortedMonths regs = go (sortBy compare [mesDeFecha (date r) | r <- regs]) []
+-- Lista categorías (de gastos) sin repetir.
+categoriasUnicasGasto :: [FinancialRecord] -> [String]
+categoriasUnicasGasto regs =
+  nub [category r | r <- regs, recordType r == Expense]
+
+-- Ordena pares (categoría, monto) de mayor a menor monto.
+sortByGastoDesc :: [(String, Double)] -> [(String, Double)]
+sortByGastoDesc [] = []
+sortByGastoDesc (x : xs) =
+  sortByGastoDesc mayores ++ [x] ++ sortByGastoDesc menores
   where
-    go [] acc = reverse acc
-    go (x : xs) [] = go xs [x]
-    go (x : xs) (y : ys)
-      | x == y = go xs (y : ys)
-      | otherwise = go xs (x : y : ys)
+    mayores = [p | p@(_, v) <- xs, v > snd x]
+    menores = [p | p@(_, v) <- xs, v <= snd x]
+
+-- Total de gastos registrados (Expense).
+totalGastos :: [FinancialRecord] -> Double
+totalGastos regs = sum [amount r | r <- regs, recordType r == Expense]
+
+-- Simula reducir gastos en un porcentaje y retorna:
+-- (gastoActual, gastoReducido, ahorroEstimado, balanceActual, balanceSimulado).
+simularReduccionGastos :: Double -> [FinancialRecord] -> (Double, Double, Double, Double, Double)
+simularReduccionGastos porcentaje regs =
+  (gastoActual, gastoReducido, ahorroEstimado, balanceActual, balanceSimulado)
+  where
+    gastoActual = totalGastos regs
+    factor = max 0 (min 100 porcentaje) / 100
+    ahorroEstimado = gastoActual * factor
+    gastoReducido = gastoActual - ahorroEstimado
+    balanceActual = calcularBalance regs
+    balanceSimulado = balanceActual + ahorroEstimado
+
+-- Ahorro neto promedio por mes: ingreso - gasto.
+ahorroPromedioMensual :: [FinancialRecord] -> Maybe Double
+ahorroPromedioMensual regs =
+  case resumenMensual regs of
+    [] -> Nothing
+    xs -> Just (sum [neto | (_, _, _, neto) <- xs] / fromIntegral (length xs))
+
+-- Proyecta ahorro acumulado para N meses usando el promedio neto mensual.
+proyeccionAhorroEnMeses :: Int -> [FinancialRecord] -> Maybe [(Int, Double)]
+proyeccionAhorroEnMeses meses regs
+  | meses <= 0 = Nothing
+  | otherwise =
+      case ahorroPromedioMensual regs of
+        Nothing -> Nothing
+        Just prom ->
+          Just [(m, prom * fromIntegral m) | m <- [1 .. meses]]
