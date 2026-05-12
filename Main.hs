@@ -1,3 +1,5 @@
+{- | Punto de entrada y capa de IO: menú de consola, validación de entradas y llamadas a 'Storage' y 'Logic'.
+-}
 module Main where
 
 import Data.Char (isSpace)
@@ -8,9 +10,11 @@ import Types
 import Storage
 import Logic
 
+-- | Elimina espacios iniciales y finales.
 trim :: String -> String
 trim = dropWhile isSpace . dropWhileEnd isSpace
 
+-- | Parte la cadena en tokens por un delimitador (no incluye vacíos consecutivos como segmentos vacíos al inicio: ver implementación).
 splitBy :: Char -> String -> [String]
 splitBy _ "" = []
 splitBy c s = go s []
@@ -20,19 +24,21 @@ splitBy c s = go s []
       | x == c = reverse acc : go xs []
       | otherwise = go xs (x : acc)
 
+-- | Parsea un número estrictamente positivo (resto de la línea solo espacios).
 parseMonto :: String -> Maybe Double
 parseMonto s =
   case reads (trim s) of
     [(x, rest)] | all isSpace rest, x > 0 -> Just x
     _ -> Nothing
 
--- Umbral >= 0 (para mínimos de ahorro u otros límites no estrictamente positivos)
+-- | Como 'parseMonto' pero admite cero (@>= 0@).
 parseMontoNoNeg :: String -> Maybe Double
 parseMontoNoNeg s =
   case reads (trim s) of
     [(x, rest)] | all isSpace rest, x >= 0 -> Just x
     _ -> Nothing
 
+-- | Cantidad de días del mes @m@ en año @y@ (1–12; otro mes devuelve 0).
 diasEnMes :: Int -> Int -> Int
 diasEnMes y m = case m of
   1 -> 31
@@ -49,10 +55,12 @@ diasEnMes y m = case m of
   12 -> 31
   _ -> 0
 
+-- | Año bisiesto gregoriano.
 bisiesto :: Int -> Bool
 bisiesto y =
   (y `mod` 4 == 0 && y `mod` 100 /= 0) || (y `mod` 400 == 0)
 
+-- | Valida @AAAA-MM-DD@ y devuelve la misma fecha normalizada con ceros a la izquierda.
 parseFecha :: String -> Maybe String
 parseFecha raw =
   case mapM readMaybe (splitBy '-' (trim raw)) :: Maybe [Int] of
@@ -66,6 +74,7 @@ parseFecha raw =
           Just (printfFecha y mo d)
     _ -> Nothing
 
+-- | Formato @YYYY-MM-DD@ con ancho fijo de dígitos.
 printfFecha :: Int -> Int -> Int -> String
 printfFecha y mo d =
   pad 4 y ++ "-" ++ pad 2 mo ++ "-" ++ pad 2 d
@@ -74,9 +83,11 @@ printfFecha y mo d =
       where
         s = show n
 
+-- | Etiquetas separadas por comas; se recortan y se omiten vacías.
 parseTags :: String -> [String]
 parseTags = filter (not . null) . map trim . splitBy ','
 
+-- | @True@ si la cadena tiene forma @YYYY-MM@ con mes 01–12.
 esMesValido :: String -> Bool
 esMesValido s =
   length s == 7
@@ -85,6 +96,7 @@ esMesValido s =
     && let mo = read [s !! 5, s !! 6] :: Int
         in mo >= 1 && mo <= 12
 
+-- | Pide un mes @YYYY-MM@ hasta obtener uno válido.
 leerMesValido :: String -> IO String
 leerMesValido promptLine = do
   putStrLn promptLine
@@ -96,6 +108,7 @@ leerMesValido promptLine = do
       putStrLn "Mes inválido. Use formato YYYY-MM (ej: 2026-05)."
       leerMesValido promptLine
 
+-- | Pide un monto > 0 hasta parsear correctamente.
 leerMontoPositivo :: String -> IO Double
 leerMontoPositivo promptLine = do
   putStrLn promptLine
@@ -106,10 +119,12 @@ leerMontoPositivo promptLine = do
       putStrLn "Monto inválido: debe ser un número mayor que cero."
       leerMontoPositivo promptLine
 
+-- | Atajo: monto positivo con prompt fijo del flujo de registro.
 leerMontoValido :: IO Double
 leerMontoValido =
   leerMontoPositivo "Monto (número positivo, ej: 1500 o 99.5):"
 
+-- | Pide un número @>= 0@.
 leerMontoNoNegativo :: String -> IO Double
 leerMontoNoNegativo promptLine = do
   putStrLn promptLine
@@ -120,6 +135,7 @@ leerMontoNoNegativo promptLine = do
       putStrLn "Valor inválido: debe ser un número mayor o igual a cero."
       leerMontoNoNegativo promptLine
 
+-- | Categoría no vacía (tras trim).
 leerCategoria :: IO String
 leerCategoria = do
   putStrLn "Categoría (texto no vacío):"
@@ -130,6 +146,7 @@ leerCategoria = do
       leerCategoria
     c -> return c
 
+-- | Fecha válida en consola (@AAAA-MM-DD@).
 leerFechaValida :: IO String
 leerFechaValida = do
   putStrLn "Fecha en formato AAAA-MM-DD (ej: 2026-05-12):"
@@ -140,13 +157,14 @@ leerFechaValida = do
       putStrLn "Fecha inválida: revise año, mes, día y el formato."
       leerFechaValida
 
+-- | Lista de etiquetas desde una línea (puede ser vacía).
 leerTags :: IO [String]
 leerTags = do
   putStrLn "Etiquetas separadas por coma (Enter = ninguna, ej: fijo, variable):"
   line <- getLine
   return (parseTags line)
 
--- Función principal que inicia el programa
+-- | Carga datos, entra al bucle del menú principal.
 main :: IO ()
 main = do
     registros <- loadRecords
@@ -154,7 +172,7 @@ main = do
     reglas <- loadRules
     menu registros presupuestos reglas
 
--- Menú principal del sistema
+-- | Menú interactivo: despacha opciones y persiste al elegir salir (opción 14).
 menu :: [FinancialRecord] -> [Budget] -> [Rule] -> IO ()
 menu registros presupuestos reglas = do
     putStrLn "\n--- Sistema de Finanzas ---"
@@ -215,7 +233,7 @@ menu registros presupuestos reglas = do
             putStrLn "Opción inválida"
             menu registros presupuestos reglas
 
--- Crea un nuevo registro financiero (monto, categoría, fecha y tags validados)
+-- | Alta de un movimiento del tipo indicado; devuelve la lista extendida.
 agregarRegistro :: RecordType -> [FinancialRecord] -> IO [FinancialRecord]
 agregarRegistro tipo registros = do
     monto <- leerMontoValido
@@ -229,7 +247,7 @@ agregarRegistro tipo registros = do
 
     return (registros ++ [nuevo])
 
--- Define o actualiza el tope de gasto para una categoría (solo compara contra registros tipo Gasto)
+-- | Define o actualiza tope de gasto por categoría ('Logic.upsertBudget').
 agregarPresupuesto :: [Budget] -> IO [Budget]
 agregarPresupuesto bs = do
     putStrLn "Categoría a presupuestar (debe ser la misma que usás en gastos, sin importar mayúsculas):"
@@ -241,7 +259,7 @@ agregarPresupuesto bs = do
     putStrLn ("Listo. Presupuesto para \"" ++ cat ++ "\": " ++ show lim)
     return (upsertBudget b bs)
 
--- Tabla real vs presupuesto y líneas ALERTA si hay exceso
+-- | Tabla presupuesto vs gasto real y alertas por exceso.
 compararPresupuestosVsGastos :: [Budget] -> [FinancialRecord] -> IO ()
 compararPresupuestosVsGastos [] _ =
     putStrLn "No hay presupuestos definidos. Use la opción 7 primero."
@@ -268,7 +286,7 @@ compararPresupuestosVsGastos bs regs = do
             then putStrLn "Estado: EXCEDIDO"
             else putStrLn "Estado: dentro del presupuesto"
 
--- Alta de reglas configurables (se acumulan en memoria hasta guardar con 11)
+-- | Alta de reglas; se guardan en disco solo con la opción 14 del menú principal.
 agregarRegla :: [Rule] -> IO [Rule]
 agregarRegla rs = do
     putStrLn "\n--- Agregar regla ---"
@@ -284,18 +302,19 @@ agregarRegla rs = do
             lim <-
                 leerMontoPositivo
                     "Umbral: se dispara la alerta si la suma de gastos en esa categoría es mayor a:"
-            putStrLn "Regla agregada (recuerde guardar con la opción 11)."
+            putStrLn "Regla agregada (recuerde guardar con la opción 14)."
             return (rs ++ [RuleGastoEnCategoriaMayor cat lim])
         "2" -> do
             minimo <-
                 leerMontoNoNegativo
                     "Mínimo de ahorro total deseado (>= 0). Advertencia si la suma de registros Saving queda por debajo:"
-            putStrLn "Regla agregada (recuerde guardar con la opción 11)."
+            putStrLn "Regla agregada (recuerde guardar con la opción 14)."
             return (rs ++ [RuleAhorroTotalMenor minimo])
         _ -> do
             putStrLn "Opción inválida."
             agregarRegla rs
 
+-- | Lista reglas y muestra el resultado de 'Logic.evaluarReglas'.
 evaluarReglasEnPantalla :: [Rule] -> [FinancialRecord] -> IO ()
 evaluarReglasEnPantalla [] _ =
     putStrLn "No hay reglas definidas. Use la opción 9."
@@ -311,12 +330,12 @@ evaluarReglasEnPantalla rs regs = do
         [] -> putStrLn "Ninguna regla disparada (todo OK según los datos actuales)."
         msgs -> mapM_ putStrLn msgs
 
--- Muestra todos los registros de forma más legible
+-- | Imprime todos los registros (o aviso si no hay).
 mostrarRegistros :: [FinancialRecord] -> IO ()
 mostrarRegistros [] = putStrLn "No hay registros"
 mostrarRegistros regs = mapM_ mostrarUno regs
 
--- Muestra un solo registro con formato
+-- | Detalle formateado de un 'FinancialRecord'.
 mostrarUno :: FinancialRecord -> IO ()
 mostrarUno r = do
     putStrLn "------------------------"
@@ -327,6 +346,7 @@ mostrarUno r = do
     putStrLn ("Descripción: " ++ description r)
     putStrLn ("Tags: " ++ show (tags r))
 
+-- | Flujo mensual, tendencia de gasto, proyección y top categorías (requisito 2.3).
 mostrarAnalisisAvanzado :: [FinancialRecord] -> IO ()
 mostrarAnalisisAvanzado regs = do
     putStrLn "\n=== Análisis financiero avanzado (2.3) ==="
@@ -384,6 +404,7 @@ mostrarAnalisisAvanzado regs = do
                 )
                 top5
 
+-- | Submenú: simulación de recorte de gastos y proyección de ahorro en meses (2.4).
 mostrarSimulacionFinanciera :: [FinancialRecord] -> IO ()
 mostrarSimulacionFinanciera regs = do
     putStrLn "\n=== Simulación financiera (2.4) ==="
@@ -424,6 +445,7 @@ mostrarSimulacionFinanciera regs = do
             putStrLn "Opción inválida."
             mostrarSimulacionFinanciera regs
 
+-- | Submenú: resumen mensual, comparación mes a mes y top gastos (2.7).
 mostrarReportes :: [FinancialRecord] -> IO ()
 mostrarReportes regs = do
     putStrLn "\n=== Reportes (2.7) ==="

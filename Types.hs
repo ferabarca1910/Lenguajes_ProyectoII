@@ -1,8 +1,13 @@
+{- | Tipos de dominio: movimientos financieros, presupuestos por categoría y reglas evaluables.
+     Convención de balance: 'Income', 'Saving' e 'Investment' suman; 'Expense' resta (véase 'Logic.calcularBalance').
+-}
 module Types where
---RecordTypes va a ser igual a ese tipo de valores(puede variar)
+
+-- | Clasificación de un movimiento en el libro de registros.
 data RecordType = Income | Expense | Saving | Investment
   deriving (Show, Read, Eq)
 
+-- | Un movimiento con monto, categoría, fecha, descripción y etiquetas opcionales.
 data FinancialRecord = FinancialRecord
   { recordType  :: RecordType
   , amount      :: Double
@@ -12,16 +17,16 @@ data FinancialRecord = FinancialRecord
   , tags        :: [String]
   } deriving (Show, Read)
 
--- Presupuesto máximo de gastos (Expense) para una categoría (nombre libre, se compara sin distinguir mayúsculas)
+-- | Tope de gastos ('Expense') para una categoría; al comparar se normaliza el nombre (trim + minúsculas).
 data Budget = Budget
   { budgetCategory :: String
   , budgetLimit    :: Double
   } deriving (Show, Read, Eq)
 
--- Reglas configurables evaluadas sobre los registros cargados en memoria
+-- | Reglas configurables; se evalúan sobre la lista de 'FinancialRecord' en memoria.
 data Rule
-  = -- Suma de gastos (Expense) en la categoría (normalizada) supera el umbral
+  = -- | Dispara si la suma de 'Expense' en la categoría (normalizada) supera el umbral.
     RuleGastoEnCategoriaMayor String Double
-  | -- Suma de montos de ahorro (Saving) por debajo del mínimo deseado
+  | -- | Dispara si la suma de montos 'Saving' es menor al mínimo indicado.
     RuleAhorroTotalMenor Double
   deriving (Show, Read, Eq)

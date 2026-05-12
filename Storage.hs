@@ -1,16 +1,20 @@
+{- | Persistencia en archivos de texto del directorio de trabajo: @records.txt@, @budgets.txt@, @rules.txt@.
+     Formato: 'show' / 'read' de Haskell; no conviene editar a mano.
+-}
 module Storage where
 
 import Types
 import System.Directory (doesFileExist)
 
--- Guarda la lista de registros en un archivo de texto
--- Se usa show para serializar la lista
+-- | Serializa y escribe la lista de 'FinancialRecord' en @records.txt@.
 saveRecords :: [FinancialRecord] -> IO ()
 saveRecords records = writeFile "records.txt" (show records)
 
+-- | Escribe presupuestos en @budgets.txt@.
 saveBudgets :: [Budget] -> IO ()
 saveBudgets bs = writeFile "budgets.txt" (show bs)
 
+-- | Lee @budgets.txt@ o lista vacía si no existe.
 loadBudgets :: IO [Budget]
 loadBudgets = do
   exists <- doesFileExist "budgets.txt"
@@ -20,8 +24,7 @@ loadBudgets = do
       content <- readFile "budgets.txt"
       return (read content)
 
--- Carga los registros desde el archivo
--- Si el archivo no existe, retorna lista vacía para evitar errores
+-- | Lee @records.txt@ o @[]@ si el archivo no existe.
 loadRecords :: IO [FinancialRecord]
 loadRecords = do
   exists <- doesFileExist "records.txt"
@@ -32,9 +35,11 @@ loadRecords = do
       content <- readFile "records.txt"
       return (read content)
 
+-- | Escribe reglas en @rules.txt@.
 saveRules :: [Rule] -> IO ()
 saveRules rs = writeFile "rules.txt" (show rs)
 
+-- | Lee @rules.txt@ o @[]@ si no existe.
 loadRules :: IO [Rule]
 loadRules = do
   exists <- doesFileExist "rules.txt"
