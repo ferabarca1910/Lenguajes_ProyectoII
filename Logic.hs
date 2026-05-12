@@ -41,9 +41,9 @@ alertasPresupuesto bs regs =
   ]
   where
     msg b =
-      "ALERTA: categoría \""
+      "ALERTA: categoria \""
         ++ budgetCategory b
-        ++ "\" — gasto real "
+        ++ "\" - gasto real "
         ++ show (gastoRealEnCategoria (budgetCategory b) regs)
         ++ " > presupuesto "
         ++ show (budgetLimit b)
@@ -78,7 +78,7 @@ evaluarRegla (RuleGastoEnCategoriaMayor cat lim) regs =
    in if g > lim
         then
           Just
-            ( "[ALERTA] Gastos en categoría \""
+            ( "[ALERTA] Gastos en categoria \""
                 ++ cat
                 ++ "\" suman "
                 ++ show g
@@ -94,7 +94,7 @@ evaluarRegla (RuleAhorroTotalMenor minimo) regs =
           Just
             ( "[ADVERTENCIA] Ahorro total registrado "
                 ++ show a
-                ++ " es menor al mínimo "
+                ++ " es menor al minimo "
                 ++ show minimo
             )
         else Nothing
@@ -110,7 +110,7 @@ evaluarReglas rs regs = concatMap f rs
 -- | Descripción legible de la regla (para listados en consola).
 describirRegla :: Rule -> String
 describirRegla (RuleGastoEnCategoriaMayor c x) =
-  "Alerta si gastos (Expense) en categoría \"" ++ c ++ "\" superan " ++ show x
+  "Alerta si gastos (Expense) en categoria \"" ++ c ++ "\" superan " ++ show x
 describirRegla (RuleAhorroTotalMenor m) =
   "Advertencia si la suma de ahorros (Saving) es menor a " ++ show m
 

@@ -34,21 +34,16 @@ El programa corre en consola y permite:
 
 - Agregar **ingreso**, **gasto**, **ahorro** e **inversión**
 - Ver registros y ver balance
-- Presupuestos por categoría + alertas por exceso
-- Reglas del sistema + evaluación de alertas/advertencias
-- **Análisis avanzado (2.3)**: flujo mensual, tendencia, proyección, top categorías
+- **Presupuestos (2.2)**: opción **7** (definir/actualizar tope por categoría, en memoria); opción **8** (comparar gastos reales vs tope y listar **alertas** si hay exceso). Tras la 7 se muestran alertas inmediatas con los registros cargados.
+- **Sistema de reglas (2.5)**: opción **9** — definir reglas en memoria: (1) si los **gastos** (`Expense`) en una **categoría** superan un **monto** → **alerta**; (2) si el **ahorro total** (suma de `Saving`) es **menor** a un valor → **advertencia**. Opción **10** — ejecutar `evaluarReglas` sobre los registros cargados y mostrar mensajes de las reglas que se disparan.
+- **Análisis avanzado (2.3)**: opción **11** — flujo de caja mensual (`resumenMensual`), tendencia de gastos mes a mes (`tendenciaGastoMensual`), proyección del próximo mes como promedio histórico de gastos mensuales (`proyeccionGastoSiguienteMes`), top 5 categorías por monto de **gasto** (`topCategoriasGasto`).
 - **Simulación (2.4)**: reducción de gastos (%) y proyección de ahorro por meses
 - **Reportes (2.7)**: resumen mensual, comparación entre periodos (mes vs mes), top categorías
 
 ## Persistencia (archivos generados)
 
-El sistema guarda y carga datos desde archivos de texto en la carpeta del proyecto (si no existen, se crean al guardar):
-
-- `records.txt`: lista de `FinancialRecord`
-- `budgets.txt`: lista de `Budget`
-- `rules.txt`: lista de `Rule`
-
-Nota: el formato actual usa serialización con `show`/`read`. Por eso es importante **no editar a mano** estos archivos, para evitar errores al cargar.
+- **`records.txt`**: un **registro por línea** (cada línea es el `show` de un `FinancialRecord`). Si el archivo viejo es una sola línea que empieza con `[`, el programa aún lo puede leer como lista. Conviene no editar a mano para no romper la carga.
+- **Presupuestos y reglas** (opciones 7–10): solo en **memoria** mientras el programa corre; al cerrar no se guardan en disco.
 
 ## Estructura del proyecto
 

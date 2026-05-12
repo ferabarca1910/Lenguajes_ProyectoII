@@ -2,6 +2,7 @@
 -}
 module Main where
 
+import Control.Exception (IOException, try)
 import Data.Char (isSpace)
 import Data.List (dropWhileEnd)
 import Text.Read (readMaybe)
@@ -10,9 +11,24 @@ import Types
 import Storage
 import Logic
 
+-- | Intenta escribir @records.txt@; no aborta el programa si el archivo está bloqueado.
+intentarSaveRecords :: String -> [FinancialRecord] -> IO ()
+intentarSaveRecords msgExito rs = do
+  r <- (try $ saveRecords rs) :: IO (Either IOException ())
+  case r of
+    Left e -> do
+      putStrLn "No se pudo guardar records.txt."
+      putStrLn "  Causa habitual: el archivo está abierto en el editor (cerrá la pestaña records.txt)."
+      putStrLn ("  " ++ show e)
+    Right () -> putStrLn msgExito
+
 -- | Elimina espacios iniciales y finales.
 trim :: String -> String
 trim = dropWhile isSpace . dropWhileEnd isSpace
+
+-- | Prefijo numérico del menú (acepta @7.@, @ 8 @, etc.).
+opcMenu :: String -> String
+opcMenu = takeWhile (`elem` ['0' .. '9']) . trim
 
 -- | Parte la cadena en tokens por un delimitador (no incluye vacíos consecutivos como segmentos vacíos al inicio: ver implementación).
 splitBy :: Char -> String -> [String]
@@ -172,7 +188,7 @@ main = do
     reglas <- loadRules
     menu registros presupuestos reglas
 
--- | Menú interactivo: despacha opciones y persiste al elegir salir (opción 14).
+-- | Menú interactivo: la opción 14 guarda solo registros en disco y termina.
 menu :: [FinancialRecord] -> [Budget] -> [Rule] -> IO ()
 menu registros presupuestos reglas = do
     putStrLn "\n--- Sistema de Finanzas ---"
@@ -182,21 +198,33 @@ menu registros presupuestos reglas = do
     putStrLn "4. Agregar inversión"
     putStrLn "5. Ver registros"
     putStrLn "6. Ver balance"
-    putStrLn "7. Definir o actualizar presupuesto por categoría"
-    putStrLn "8. Comparar presupuesto vs gastos reales (alertas)"
-    putStrLn "9. Agregar regla del sistema"
-    putStrLn "10. Evaluar reglas (alertas y advertencias)"
-    putStrLn "11. Análisis financiero avanzado (2.3)"
-    putStrLn "12. Simulación financiera (2.4)"
-    putStrLn "13. Reportes (2.7)"
-    putStrLn "14. Guardar y salir"
+    putStrLn "7. [2.2] Definir o actualizar presupuesto por categoría"
+    putStrLn "8. [2.2] Comparar gastos reales vs presupuesto (incluye alertas si hay exceso)"
+    putStrLn "9. [2.5] Agregar regla del sistema (gasto en categoria / ahorro minimo)"
+    putStrLn "10. [2.5] Evaluar reglas (alertas y advertencias con datos actuales)"
+    putStrLn "11. [2.3] Analisis financiero avanzado"
+    putStrLn "12. Simulación financiera"
+    putStrLn "13. Reportes"
+    putStrLn "14. Guardar registros (records.txt) y salir"
     opcion <- getLine
 
-    case opcion of
-        "1" -> agregarRegistro Income registros >>= \rs -> menu rs presupuestos reglas
-        "2" -> agregarRegistro Expense registros >>= \rs -> menu rs presupuestos reglas
-        "3" -> agregarRegistro Saving registros >>= \rs -> menu rs presupuestos reglas
-        "4" -> agregarRegistro Investment registros >>= \rs -> menu rs presupuestos reglas
+    case opcMenu opcion of
+        "1" ->
+            agregarRegistro Income registros >>= \rs -> do
+                intentarSaveRecords "Registro guardado en records.txt." rs
+                menu rs presupuestos reglas
+        "2" ->
+            agregarRegistro Expense registros >>= \rs -> do
+                intentarSaveRecords "Registro guardado en records.txt." rs
+                menu rs presupuestos reglas
+        "3" ->
+            agregarRegistro Saving registros >>= \rs -> do
+                intentarSaveRecords "Registro guardado en records.txt." rs
+                menu rs presupuestos reglas
+        "4" ->
+            agregarRegistro Investment registros >>= \rs -> do
+                intentarSaveRecords "Registro guardado en records.txt." rs
+                menu rs presupuestos reglas
         "5" -> do
             mostrarRegistros registros
             menu registros presupuestos reglas
@@ -205,6 +233,7 @@ menu registros presupuestos reglas = do
             menu registros presupuestos reglas
         "7" -> do
             ps <- agregarPresupuesto presupuestos
+            mostrarAlertasPresupuesto2_2 ps registros
             menu registros ps reglas
         "8" -> do
             compararPresupuestosVsGastos presupuestos registros
@@ -225,10 +254,8 @@ menu registros presupuestos reglas = do
             mostrarReportes registros
             menu registros presupuestos reglas
         "14" -> do
-            saveRecords registros
-            saveBudgets presupuestos
-            saveRules reglas
-            putStrLn "Datos guardados (registros, presupuestos y reglas). Chao mae"
+            intentarSaveRecords "Registros guardados en records.txt." registros
+            putStrLn "Nota: presupuestos y reglas de esta sesión no se guardan en archivo. Chao mae"
         _ -> do
             putStrLn "Opción inválida"
             menu registros presupuestos reglas
@@ -247,14 +274,24 @@ agregarRegistro tipo registros = do
 
     return (registros ++ [nuevo])
 
+-- | Tras definir un presupuesto: aviso si ya hay gastos (Expense) que superan el tope (requisito 2.2).
+mostrarAlertasPresupuesto2_2 :: [Budget] -> [FinancialRecord] -> IO ()
+mostrarAlertasPresupuesto2_2 bs regs = do
+    putStrLn ""
+    putStrLn "--- 2.2 Alertas por exceso de presupuesto (con datos actuales) ---"
+    let als = alertasPresupuesto bs regs
+    if null als
+        then putStrLn "Sin exceso: ningun tope superado por los gastos registrados hasta ahora."
+        else mapM_ putStrLn als
+
 -- | Define o actualiza tope de gasto por categoría ('Logic.upsertBudget').
 agregarPresupuesto :: [Budget] -> IO [Budget]
 agregarPresupuesto bs = do
-    putStrLn "Categoría a presupuestar (debe ser la misma que usás en gastos, sin importar mayúsculas):"
+    putStrLn "Categoria a presupuestar (debe ser la misma que usas en gastos, sin importar mayusculas):"
     cat <- leerCategoria
     lim <-
         leerMontoPositivo
-            "Tope máximo de gasto para esa categoría (número positivo, ej: 50000):"
+            "Tope maximo de gasto para esa categoria (numero positivo, ej: 50000):"
     let b = Budget cat lim
     putStrLn ("Listo. Presupuesto para \"" ++ cat ++ "\": " ++ show lim)
     return (upsertBudget b bs)
@@ -262,13 +299,14 @@ agregarPresupuesto bs = do
 -- | Tabla presupuesto vs gasto real y alertas por exceso.
 compararPresupuestosVsGastos :: [Budget] -> [FinancialRecord] -> IO ()
 compararPresupuestosVsGastos [] _ =
-    putStrLn "No hay presupuestos definidos. Use la opción 7 primero."
+    putStrLn "No hay presupuestos definidos. Use la opcion 7 primero."
 compararPresupuestosVsGastos bs regs = do
-    putStrLn "\n--- Presupuesto vs gastos reales (solo Expense) ---"
+    putStrLn "\n=== 2.2 Presupuestos: comparación real vs tope y alertas ==="
+    putStrLn "(Solo se suman gastos tipo Expense por categoria, misma logica que al definir el presupuesto.)\n"
     mapM_ (fila regs) bs
     let als = alertasPresupuesto bs regs
     if null als
-        then putStrLn "\nSin alertas: ningún presupuesto superado."
+        then putStrLn "\nSin alertas: ningun presupuesto superado."
         else do
             putStrLn "\n--- Alertas ---"
             mapM_ putStrLn als
@@ -278,7 +316,7 @@ compararPresupuestosVsGastos bs regs = do
             tope = budgetLimit b
             restante = tope - real
         putStrLn "------------------------"
-        putStrLn ("Categoría: " ++ budgetCategory b)
+        putStrLn ("Categoria: " ++ budgetCategory b)
         putStrLn ("Presupuesto (tope): " ++ show tope)
         putStrLn ("Gasto real acumulado: " ++ show real)
         putStrLn ("Diferencia (tope - gasto): " ++ show restante)
@@ -286,38 +324,38 @@ compararPresupuestosVsGastos bs regs = do
             then putStrLn "Estado: EXCEDIDO"
             else putStrLn "Estado: dentro del presupuesto"
 
--- | Alta de reglas; se guardan en disco solo con la opción 14 del menú principal.
+-- | Alta de reglas (solo en memoria; no se persisten en archivo).
 agregarRegla :: [Rule] -> IO [Rule]
 agregarRegla rs = do
     putStrLn "\n--- Agregar regla ---"
-    putStrLn "1. Si gasto en categoría supera un monto → alerta"
-    putStrLn "2. Si ahorro total (suma de Saving) es menor a un mínimo → advertencia"
+    putStrLn "1. Si gasto en categoria supera un monto -> alerta"
+    putStrLn "2. Si ahorro total (suma de Saving) es menor a un minimo -> advertencia"
     putStrLn "0. Volver sin cambios"
     sub <- getLine
     case trim sub of
         "0" -> return rs
         "1" -> do
-            putStrLn "Categoría a vigilar (igual que en gastos; sin importar mayúsculas al evaluar):"
+            putStrLn "Categoria a vigilar (igual que en gastos; sin importar mayusculas al evaluar):"
             cat <- leerCategoria
             lim <-
                 leerMontoPositivo
-                    "Umbral: se dispara la alerta si la suma de gastos en esa categoría es mayor a:"
-            putStrLn "Regla agregada (recuerde guardar con la opción 14)."
+                    "Umbral: se dispara la alerta si la suma de gastos en esa categoria es mayor a:"
+            putStrLn "Regla agregada (solo en memoria hasta cerrar el programa)."
             return (rs ++ [RuleGastoEnCategoriaMayor cat lim])
         "2" -> do
             minimo <-
                 leerMontoNoNegativo
-                    "Mínimo de ahorro total deseado (>= 0). Advertencia si la suma de registros Saving queda por debajo:"
-            putStrLn "Regla agregada (recuerde guardar con la opción 14)."
+                    "Minimo de ahorro total deseado (>= 0). Advertencia si la suma de registros Saving queda por debajo:"
+            putStrLn "Regla agregada (solo en memoria hasta cerrar el programa)."
             return (rs ++ [RuleAhorroTotalMenor minimo])
         _ -> do
-            putStrLn "Opción inválida."
+            putStrLn "Opcion invalida."
             agregarRegla rs
 
 -- | Lista reglas y muestra el resultado de 'Logic.evaluarReglas'.
 evaluarReglasEnPantalla :: [Rule] -> [FinancialRecord] -> IO ()
 evaluarReglasEnPantalla [] _ =
-    putStrLn "No hay reglas definidas. Use la opción 9."
+    putStrLn "No hay reglas definidas. Use la opcion 9."
 evaluarReglasEnPantalla rs regs = do
     putStrLn "\n--- Reglas definidas ---"
     mapM_
@@ -325,9 +363,9 @@ evaluarReglasEnPantalla rs regs = do
             putStrLn (show (i :: Int) ++ ". " ++ describirRegla r)
         )
         (zip [1 ..] rs)
-    putStrLn "\n--- Resultado de la evaluación ---"
+    putStrLn "\n--- Resultado de la evaluacion ---"
     case evaluarReglas rs regs of
-        [] -> putStrLn "Ninguna regla disparada (todo OK según los datos actuales)."
+        [] -> putStrLn "Ninguna regla disparada (todo OK segun los datos actuales)."
         msgs -> mapM_ putStrLn msgs
 
 -- | Imprime todos los registros (o aviso si no hay).
@@ -346,10 +384,10 @@ mostrarUno r = do
     putStrLn ("Descripción: " ++ description r)
     putStrLn ("Tags: " ++ show (tags r))
 
--- | Flujo mensual, tendencia de gasto, proyección y top categorías (requisito 2.3).
+-- | Flujo mensual, tendencia de gasto, proyeccion y top categorias (requisito 2.3).
 mostrarAnalisisAvanzado :: [FinancialRecord] -> IO ()
 mostrarAnalisisAvanzado regs = do
-    putStrLn "\n=== Análisis financiero avanzado (2.3) ==="
+    putStrLn "\n=== Analisis financiero avanzado (2.3) ==="
     putStrLn "\n--- Flujo de caja mensual ---"
     let flujo = resumenMensual regs
     if null flujo
@@ -382,25 +420,25 @@ mostrarAnalisisAvanzado regs = do
                             ++ show prev
                             ++ " | gasto actual: "
                             ++ show act
-                            ++ " | variación: "
+                            ++ " | variacion: "
                             ++ show var
                         )
                 )
                 tend
 
-    putStrLn "\n--- Proyección de gasto próximo mes ---"
+    putStrLn "\n--- Proyeccion de gasto proximo mes ---"
     case proyeccionGastoSiguienteMes regs of
-        Nothing -> putStrLn "No hay histórico de gastos para proyectar."
-        Just p -> putStrLn ("Proyección estimada (promedio histórico): " ++ show p)
+        Nothing -> putStrLn "No hay historico de gastos para proyectar."
+        Just p -> putStrLn ("Proyeccion estimada (promedio historico de gastos mensuales): " ++ show p)
 
-    putStrLn "\n--- Top 5 categorías con mayor gasto ---"
+    putStrLn "\n--- Top 5 categorias con mayor gasto (impacto en egresos) ---"
     let top5 = topCategoriasGasto 5 regs
     if null top5
-        then putStrLn "No hay gastos registrados por categoría."
+        then putStrLn "No hay gastos registrados por categoria."
         else
             mapM_
                 ( \(c, v) ->
-                    putStrLn ("Categoría: " ++ c ++ " | gasto acumulado: " ++ show v)
+                    putStrLn ("Categoria: " ++ c ++ " | gasto acumulado: " ++ show v)
                 )
                 top5
 

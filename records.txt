@@ -1,1 +1,5 @@
-[]
+FinancialRecord {recordType = Income, amount = 300100.0, category = "salario", date = "2026-05-11", description = "Pago de mi salario", tags = []}
+FinancialRecord {recordType = Expense, amount = 10100.0, category = "Luz", date = "2026-05-11", description = "Pago de la luz", tags = []}
+FinancialRecord {recordType = Saving, amount = 50100.0, category = "Casa Haceres", date = "2026-05-11", description = "Ahorre en no usar la ducha", tags = []}
+FinancialRecord {recordType = Investment, amount = 500100.0, category = "Prestamos", date = "2026-05-11", description = "Dinero que gener\233 en prestamos", tags = []}
+FinancialRecord {recordType = Expense, amount = 300000.0, category = "Agua", date = "2026-05-11", description = "Pago de la agua", tags = []}
